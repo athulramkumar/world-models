@@ -70,18 +70,22 @@ class OasisEngine(BaseWorldEngine):
         actions_path: str,
         total_frames: int = 32,
         n_prompt_frames: int = 1,
+        video_offset: Optional[int] = None,
     ) -> list[Frame]:
         """Generate a sequence of frames (batch mode, matching Oasis's design)."""
         self._status.state = EngineState.GENERATING
         t0 = time.time()
 
-        resp = self._client.send_command(
-            "generate_video",
+        cmd_kwargs: dict[str, Any] = dict(
             prompt_path=prompt_path,
             actions_path=actions_path,
             total_frames=total_frames,
             n_prompt_frames=n_prompt_frames,
         )
+        if video_offset is not None:
+            cmd_kwargs["video_offset"] = video_offset
+
+        resp = self._client.send_command("generate_video", **cmd_kwargs)
         elapsed = (time.time() - t0) * 1000
         self._status.last_gen_time_ms = elapsed
         self._status.state = EngineState.READY

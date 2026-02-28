@@ -126,7 +126,7 @@ def _load_comparison(run_name: str):
         f"**With MemFlow**\n\n"
         f"- {total_frames_mf} frames generated in {gen_time_mf:.1f}s\n"
         f"- MemFlow extraction + memory on each frame\n"
-        f"- Corrections applied between chunks\n"
+        f"- Corrections applied between chunks/intervals\n"
     )
     if mem_stats:
         mf_info += (
@@ -141,8 +141,27 @@ def _load_comparison(run_name: str):
     if mem_prompt and mem_prompt != "N/A":
         mf_info += f"\n**Memory state prompt**:\n> {mem_prompt[:300]}"
 
+    quality = meta.get("quality", {})
+    q_without = quality.get("without", {})
+    q_with = quality.get("with", {})
+    extra = ""
+    if q_without or q_with:
+        extra = "### AI Quality Scores (GPT-4o Vision)\n\n"
+        if q_without:
+            extra += (
+                f"**Without MemFlow**: {q_without.get('verdict', '?')} "
+                f"(avg {q_without.get('avg_score', '?')}/10, "
+                f"meaningful: {q_without.get('meaningful_ratio', '?')})\n\n"
+            )
+        if q_with:
+            extra += (
+                f"**With MemFlow**: {q_with.get('verdict', '?')} "
+                f"(avg {q_with.get('avg_score', '?')}/10, "
+                f"meaningful: {q_with.get('meaningful_ratio', '?')})\n\n"
+            )
+
     return (v_without, v_with, gallery_without, gallery_with,
-            header, bl_info, mf_info, "")
+            header, bl_info, mf_info, extra)
 
 
 # ------------------------------------------------------------------ #
@@ -249,7 +268,7 @@ def build_results_viewer_tab() -> gr.Blocks:
                             label="Sampled Frames (With)", columns=8, height=200,
                         )
 
-                comp_extra = gr.Markdown(visible=False)
+                comp_extra = gr.Markdown()
 
                 comp_outputs = [
                     comp_vid_without, comp_vid_with,

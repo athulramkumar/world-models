@@ -73,7 +73,7 @@ class Corrector:
             return self._apply_frame_injection(engine, memory, frame_idx)
 
         if self.strategy == CorrectionStrategy.PROMPT_CONDITIONING:
-            return self._apply_prompt_conditioning(engine, memory)
+            return self._apply_prompt_conditioning(engine, memory, frame_idx=frame_idx)
 
         return None
 
@@ -149,13 +149,16 @@ class Corrector:
         self,
         engine: BaseWorldEngine,
         memory: MemoryState,
+        frame_idx: int = 0,
     ) -> Optional[dict]:
         """Update text prompt with memory description (WorldEngine only)."""
         prompt = memory.to_prompt()
         engine.inject_conditioning(memory)
+        self._last_injection_idx = frame_idx
         log_entry = {
             "strategy": "prompt_conditioning",
             "prompt": prompt,
+            "frame_idx": frame_idx,
             "timestamp": time.time(),
         }
         self._correction_log.append(log_entry)
