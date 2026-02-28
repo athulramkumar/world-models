@@ -1,0 +1,38 @@
+# Virtual environments
+envs/
+
+# Cloned model repositories
+repos/
+
+# Model checkpoints (large binary files)
+checkpoints/
+
+# Generated test results (videos, frames, metadata)
+test_results/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Pytest
+.pytest_cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temp files
+*.tmp
+*.tmp.*
+_tmp_*

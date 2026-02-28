@@ -1,0 +1,34 @@
+gpu:
+  name: "NVIDIA A100-SXM4-80GB"
+  vram_gb: 80
+  compute_capability: "8.0"
+  architecture: "Ampere"
+
+cuda:
+  version: "12.4"
+  driver: "570.x"
+
+engines:
+  mineworld:
+    precision: "fp16"
+    batch_size: 1
+    compile: true
+    recommended_model: "700M_16f"
+    max_context_frames: 16
+    notes: "A100 handles all MineWorld model sizes comfortably"
+
+  open_oasis:
+    precision: "fp16"
+    batch_size: 1
+    compile: false
+    ddim_steps: 10
+    max_frames: 32
+    notes: "500M DiT runs well within 80GB VRAM"
+
+  world_engine:
+    precision: "bf16"
+    batch_size: 1
+    compile: true
+    quantization: null
+    model_uri: "Overworld/Waypoint-1-Small"
+    notes: "bf16 preferred on A100 Ampere; no quantization needed"

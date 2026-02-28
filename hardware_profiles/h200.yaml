@@ -1,0 +1,34 @@
+gpu:
+  name: "NVIDIA H200-SXM-141GB"
+  vram_gb: 141
+  compute_capability: "9.0"
+  architecture: "Hopper"
+
+cuda:
+  version: "12.4"
+  driver: "570.x"
+
+engines:
+  mineworld:
+    precision: "fp16"
+    batch_size: 2
+    compile: true
+    recommended_model: "1200M_32f"
+    max_context_frames: 32
+    notes: "141GB VRAM allows batch>1 or multiple models simultaneously"
+
+  open_oasis:
+    precision: "fp16"
+    batch_size: 2
+    compile: false
+    ddim_steps: 10
+    max_frames: 32
+    notes: "Enough VRAM to run Oasis alongside another engine"
+
+  world_engine:
+    precision: "bf16"
+    batch_size: 1
+    compile: true
+    quantization: null
+    model_uri: "Overworld/Waypoint-1-Small"
+    notes: "141GB allows larger future models; nvfp4 quantization available on Hopper"
