@@ -157,6 +157,83 @@ def handle(req: dict) -> dict:
             "shape": list(frames[0].shape),
         }
 
+    if cmd == "generate_interactive":
+        if not _loaded:
+            return {"status": "error", "error": "Model not loaded"}
+
+        import torch
+        from torch import autocast
+        from einops import rearrange
+        from utils import load_prompt
+
+        prompt_path = req["prompt_path"]
+        action_list = req["actions"]  # list of 25-dim lists
+        n_prompt = 1
+        total = len(action_list) + 1  # +1 for prompt frame
+
+        x = load_prompt(prompt_path, n_prompt_frames=n_prompt)
+        actions_tensor = torch.zeros(1, total, 25)
+        for i, a in enumerate(action_list):
+            actions_tensor[0, i + 1] = torch.tensor(a, dtype=torch.float32)
+        x, actions_tensor = x.to(_device), actions_tensor.to(_device)
+
+        B = x.shape[0]
+        H, W = x.shape[-2:]
+        x = rearrange(x, "b t c h w -> (b t) c h w")
+        with torch.no_grad(), autocast("cuda", dtype=torch.half):
+            x = vae_model.encode(x * 2 - 1).mean * _scaling_factor
+        x = rearrange(
+            x, "(b t) (h w) c -> b t c h w",
+            t=n_prompt, h=H // vae_model.patch_size, w=W // vae_model.patch_size,
+        )
+
+        ac = rearrange(_alphas_cumprod, "T -> T 1 1 1")
+
+        for i in range(n_prompt, total):
+            chunk = torch.randn((B, 1, *x.shape[-3:]), device=_device)
+            chunk = torch.clamp(chunk, -_noise_abs_max, _noise_abs_max)
+            x = torch.cat([x, chunk], dim=1)
+            start = max(0, i + 1 - dit_model.max_frames)
+
+            for ni in reversed(range(1, _ddim_steps + 1)):
+                t_ctx = torch.full((B, i), _stabilization_level - 1, dtype=torch.long, device=_device)
+                t = torch.full((B, 1), _noise_range[ni], dtype=torch.long, device=_device)
+                t_next = torch.full((B, 1), _noise_range[ni - 1], dtype=torch.long, device=_device)
+                t_next = torch.where(t_next < 0, t, t_next)
+                t_full = torch.cat([t_ctx, t], dim=1)[:, start:]
+                t_next_full = torch.cat([t_ctx, t_next], dim=1)[:, start:]
+
+                x_curr = x[:, start:].clone()
+                with torch.no_grad(), autocast("cuda", dtype=torch.half):
+                    v = dit_model(x_curr, t_full, actions_tensor[:, start : i + 1])
+
+                x_start = ac[t_full].sqrt() * x_curr - (1 - ac[t_full]).sqrt() * v
+                x_noise = ((1 / ac[t_full]).sqrt() * x_curr - x_start) / (1 / ac[t_full] - 1).sqrt()
+                a_next = ac[t_next_full]
+                a_next[:, :-1] = 1.0
+                if ni == 1:
+                    a_next[:, -1:] = 1.0
+                x_pred = a_next.sqrt() * x_start + x_noise * (1 - a_next).sqrt()
+                x[:, -1:] = x_pred[:, -1:]
+
+        _latent_buffer = x.detach().clone()
+
+        x_dec = rearrange(x, "b t c h w -> (b t) (h w) c")
+        with torch.no_grad():
+            x_dec = (vae_model.decode(x_dec / _scaling_factor) + 1) / 2
+        x_dec = rearrange(x_dec, "(b t) c h w -> b t h w c", t=total)
+        frames = torch.clamp(x_dec, 0, 1)
+        frames = (frames * 255).byte().cpu().numpy()[0]
+
+        from wm_platform.engines.worker_protocol import encode_frame
+        encoded = [encode_frame(f) for f in frames[n_prompt:]]
+        return {
+            "status": "ok",
+            "frames": encoded,
+            "n_frames": len(encoded),
+            "shape": list(frames[0].shape),
+        }
+
     if cmd == "get_latents":
         if _latent_buffer is None:
             return {"status": "ok", "latent": None}

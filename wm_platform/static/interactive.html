@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Oasis Interactive - MemFlow Comparison</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background: #0f1117;
+  color: #e1e4e8;
+  min-height: 100vh;
+}
+.header {
+  background: #161b22;
+  border-bottom: 1px solid #30363d;
+  padding: 12px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.header h1 { font-size: 18px; font-weight: 600; color: #f0f6fc; }
+.header .controls { display: flex; gap: 10px; align-items: center; }
+.header select, .header button {
+  background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
+  border-radius: 6px; padding: 5px 10px; font-size: 13px; cursor: pointer;
+}
+.header button:hover { background: #30363d; }
+.header button.primary { background: #238636; border-color: #2ea043; color: #fff; }
+.header button.primary:hover { background: #2ea043; }
+
+.main { display: flex; height: calc(100vh - 52px); }
+
+.video-panel {
+  flex: 1; display: flex; flex-direction: column; border-right: 1px solid #30363d;
+}
+.video-panel:last-of-type { border-right: none; }
+.video-panel .panel-header {
+  padding: 8px 16px; background: #161b22; border-bottom: 1px solid #30363d;
+  font-weight: 600; font-size: 13px; display: flex; justify-content: space-between; align-items: center;
+}
+.tag { font-size: 11px; padding: 2px 8px; border-radius: 12px; font-weight: 500; }
+.tag.baseline { background: #da3633; color: #fff; }
+.tag.memflow { background: #238636; color: #fff; }
+
+.canvas-wrap {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  background: #010409; position: relative; overflow: hidden;
+}
+.canvas-wrap img { max-width: 100%; max-height: 100%; image-rendering: pixelated; }
+
+.side-panel {
+  width: 310px; background: #161b22; border-left: 1px solid #30363d;
+  display: flex; flex-direction: column; overflow-y: auto;
+}
+.side-panel section { padding: 12px 14px; border-bottom: 1px solid #21262d; }
+.side-panel h3 {
+  font-size: 11px; font-weight: 600; color: #8b949e; text-transform: uppercase;
+  letter-spacing: 0.5px; margin-bottom: 6px;
+}
+
+.control-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.control-group { text-align: center; }
+.control-group-label {
+  font-size: 10px; color: #6e7681; text-transform: uppercase; letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.keys-display { display: flex; gap: 3px; justify-content: center; margin: 3px 0; }
+.key-btn {
+  width: 38px; height: 38px; display: flex; align-items: center; justify-content: center;
+  background: #21262d; border: 2px solid #30363d; border-radius: 5px;
+  font-size: 13px; font-weight: 700; color: #8b949e; transition: all 0.1s; cursor: pointer;
+  padding: 0; font-family: inherit;
+}
+.key-btn:hover { background: #30363d; color: #c9d1d9; }
+.key-btn.active { background: #1f6feb; border-color: #388bfd; color: #fff; transform: scale(0.95); }
+.key-btn.small { width: 34px; height: 34px; font-size: 11px; }
+.key-btn.cam { border-color: #6e40c9; }
+.key-btn.cam.active { background: #8957e5; border-color: #a371f7; }
+.key-btn.act { border-color: #d29922; }
+.key-btn.act.active { background: #d29922; border-color: #e3b341; }
+
+.action-row {
+  display: flex; gap: 4px; justify-content: center; flex-wrap: wrap; margin-top: 6px;
+}
+
+.action-queue { display: flex; flex-wrap: wrap; gap: 3px; margin: 4px 0; min-height: 24px; }
+.action-chip {
+  font-size: 10px; padding: 2px 5px; background: #30363d; border-radius: 3px; color: #c9d1d9;
+}
+.action-chip.cam { background: #3d1d72; }
+.action-chip.act { background: #5c3d00; }
+
+.stat-row { display: flex; justify-content: space-between; padding: 3px 0; font-size: 12px; }
+.stat-row .label { color: #8b949e; }
+.stat-row .value { color: #c9d1d9; font-weight: 500; }
+
+.status-bar {
+  padding: 6px 16px; font-size: 12px; color: #8b949e; background: #0d1117;
+  border-top: 1px solid #21262d;
+}
+.status-bar.generating { color: #f0883e; }
+.status-bar.ready { color: #3fb950; }
+
+.log-area {
+  font-family: 'Cascadia Code', 'Fira Code', monospace; font-size: 10px; color: #8b949e;
+  max-height: 100px; overflow-y: auto; background: #0d1117; border-radius: 4px;
+  padding: 4px 6px; line-height: 1.5;
+}
+.log-area .log-entry { white-space: nowrap; }
+
+.frame-counter {
+  font-size: 11px; color: #8b949e; position: absolute; bottom: 6px; left: 10px;
+  background: rgba(0,0,0,0.75); padding: 2px 6px; border-radius: 3px;
+}
+
+.legend {
+  display: flex; gap: 12px; font-size: 10px; color: #6e7681; margin-top: 6px;
+  justify-content: center;
+}
+.legend-dot {
+  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  margin-right: 3px; vertical-align: middle;
+}
+.legend-dot.move { background: #388bfd; }
+.legend-dot.camera { background: #8957e5; }
+.legend-dot.action { background: #d29922; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Oasis Interactive Explorer</h1>
+  <div class="controls">
+    <label style="font-size:12px;color:#8b949e">Scene:</label>
+    <select id="promptSelect">
+      <optgroup label="Default (Stone Tunnel)">
+        <option value="default">Default - Start</option>
+        <option value="default_mid">Default - Mid</option>
+        <option value="default_late">Default - Late</option>
+      </optgroup>
+      <optgroup label="Treechop (Forest)">
+        <option value="treechop">Treechop - Start</option>
+        <option value="treechop_mid">Treechop - Mid</option>
+        <option value="treechop_late">Treechop - Late</option>
+      </optgroup>
+      <optgroup label="Snippy (Birch/Grass)">
+        <option value="snippy">Snippy - Start</option>
+        <option value="snippy_mid">Snippy - Mid</option>
+        <option value="snippy_late">Snippy - Late</option>
+      </optgroup>
+    </select>
+    <button class="primary" id="startBtn">Start</button>
+    <button id="generateBtn" title="Generate with current actions (Space)">Generate</button>
+    <button id="resetBtn">Reset</button>
+  </div>
+</div>
+
+<div class="main">
+  <div class="video-panel">
+    <div class="panel-header">
+      Without MemFlow <span class="tag baseline">Baseline</span>
+    </div>
+    <div class="canvas-wrap">
+      <img id="blCanvas" src="" alt="Baseline">
+      <div class="frame-counter" id="blCounter">Frame: 0</div>
+    </div>
+  </div>
+
+  <div class="video-panel">
+    <div class="panel-header">
+      With MemFlow <span class="tag memflow">MemFlow</span>
+    </div>
+    <div class="canvas-wrap">
+      <img id="mfCanvas" src="" alt="MemFlow">
+      <div class="frame-counter" id="mfCounter">Frame: 0</div>
+    </div>
+  </div>
+
+  <div class="side-panel">
+    <section>
+      <h3>Controls</h3>
+      <div class="control-grid">
+        <div class="control-group">
+          <div class="control-group-label">Movement (WASD)</div>
+          <div class="keys-display">
+            <button class="key-btn" id="keyW" data-key="w" aria-label="Forward (W)">W</button>
+          </div>
+          <div class="keys-display">
+            <button class="key-btn" id="keyA" data-key="a" aria-label="Left (A)">A</button>
+            <button class="key-btn" id="keyS" data-key="s" aria-label="Back (S)">S</button>
+            <button class="key-btn" id="keyD" data-key="d" aria-label="Right (D)">D</button>
+          </div>
+        </div>
+        <div class="control-group">
+          <div class="control-group-label">Camera (Arrows/QE)</div>
+          <div class="keys-display">
+            <button class="key-btn cam small" id="keyArrowUp" data-key="ArrowUp" aria-label="Look Up">&uarr;</button>
+          </div>
+          <div class="keys-display">
+            <button class="key-btn cam small" id="keyArrowLeft" data-key="ArrowLeft" aria-label="Look Left">&larr;</button>
+            <button class="key-btn cam small" id="keyArrowDown" data-key="ArrowDown" aria-label="Look Down">&darr;</button>
+            <button class="key-btn cam small" id="keyArrowRight" data-key="ArrowRight" aria-label="Look Right">&rarr;</button>
+          </div>
+        </div>
+      </div>
+      <div class="action-row">
+        <button class="key-btn act small" id="keyJ" data-key="j" aria-label="Jump (J)">J</button>
+        <button class="key-btn act small" id="keyF" data-key="f" aria-label="Attack (F)">F</button>
+        <button class="key-btn act small" id="keyR" data-key="r" aria-label="Use (R)">R</button>
+        <button class="key-btn act small" id="keyShift" data-key="Shift" aria-label="Sneak (Shift)">Snk</button>
+        <button class="key-btn act small" id="keyControl" data-key="Control" aria-label="Sprint (Ctrl)">Spr</button>
+      </div>
+      <div class="legend">
+        <span><span class="legend-dot move"></span>Move</span>
+        <span><span class="legend-dot camera"></span>Camera</span>
+        <span><span class="legend-dot action"></span>Action</span>
+      </div>
+    </section>
+
+    <section>
+      <h3>Action Queue (<span id="queueCount">0</span>/8)</h3>
+      <div class="action-queue" id="actionQueue"></div>
+    </section>
+
+    <section>
+      <h3>Session Stats</h3>
+      <div class="stat-row"><span class="label">Total frames</span><span class="value" id="statFrames">0</span></div>
+      <div class="stat-row"><span class="label">Batches</span><span class="value" id="statBatches">0</span></div>
+      <div class="stat-row"><span class="label">Session time</span><span class="value" id="statTime">0s</span></div>
+    </section>
+
+    <section>
+      <h3>MemFlow Memory</h3>
+      <div class="stat-row"><span class="label">Graph nodes</span><span class="value" id="mfNodes">0</span></div>
+      <div class="stat-row"><span class="label">Graph edges</span><span class="value" id="mfEdges">0</span></div>
+      <div class="stat-row"><span class="label">Locations</span><span class="value" id="mfLocations">0</span></div>
+      <div class="stat-row"><span class="label">Objects</span><span class="value" id="mfObjects">0</span></div>
+      <div class="stat-row"><span class="label">Entities</span><span class="value" id="mfEntities">0</span></div>
+      <div class="stat-row"><span class="label">Current scene</span><span class="value" id="mfScene">-</span></div>
+    </section>
+
+    <section>
+      <h3>Log</h3>
+      <div class="log-area" id="logArea"></div>
+    </section>
+  </div>
+</div>
+
+<div class="status-bar" id="statusBar">Press "Start" to begin</div>
+
+<script>
+const ws_url = `ws://${window.location.host}/ws/interactive`;
+let ws = null;
+let sessionActive = false;
+let generating = false;
+let blFrameIdx = 0;
+let mfFrameIdx = 0;
+let batchCount = 0;
+let startTime = null;
+
+const VALID_KEYS = new Set([
+  'w','a','s','d',
+  'ArrowLeft','ArrowRight','ArrowUp','ArrowDown','q','e',
+  'j','f','r','Shift','Control'
+]);
+
+const KEY_LABELS = {
+  'w':'W','a':'A','s':'S','d':'D',
+  'ArrowLeft':'\u2190','ArrowRight':'\u2192','ArrowUp':'\u2191','ArrowDown':'\u2193',
+  'q':'Q','e':'E',
+  'j':'Jump','f':'Atk','r':'Use','Shift':'Snk','Control':'Spr'
+};
+
+const CAM_KEYS = new Set(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','q','e']);
+const ACT_KEYS = new Set(['j','f','r','Shift','Control']);
+
+const blCanvas = document.getElementById('blCanvas');
+const mfCanvas = document.getElementById('mfCanvas');
+const blCounter = document.getElementById('blCounter');
+const mfCounter = document.getElementById('mfCounter');
+const statusBar = document.getElementById('statusBar');
+const logArea = document.getElementById('logArea');
+const actionQueue = document.getElementById('actionQueue');
+const queueCount = document.getElementById('queueCount');
+
+function setStatus(msg, cls) {
+  statusBar.textContent = msg;
+  statusBar.className = 'status-bar ' + (cls || '');
+}
+
+function addLog(msg) {
+  const entry = document.createElement('div');
+  entry.className = 'log-entry';
+  const ts = new Date().toLocaleTimeString();
+  entry.textContent = `[${ts}] ${msg}`;
+  logArea.appendChild(entry);
+  logArea.scrollTop = logArea.scrollHeight;
+}
+
+function updateStats() {
+  document.getElementById('statFrames').textContent = Math.max(blFrameIdx, mfFrameIdx);
+  document.getElementById('statBatches').textContent = batchCount;
+  if (startTime) {
+    const elapsed = Math.round((Date.now() - startTime) / 1000);
+    document.getElementById('statTime').textContent = elapsed + 's';
+  }
+}
+
+function addActionChip(key) {
+  const chip = document.createElement('span');
+  let cls = 'action-chip';
+  if (CAM_KEYS.has(key)) cls += ' cam';
+  else if (ACT_KEYS.has(key)) cls += ' act';
+  chip.className = cls;
+  chip.textContent = KEY_LABELS[key] || key;
+  actionQueue.appendChild(chip);
+}
+
+function clearActionQueue() {
+  actionQueue.innerHTML = '';
+  queueCount.textContent = '0';
+}
+
+function getKeyElId(key) {
+  if (key === 'ArrowLeft') return 'keyArrowLeft';
+  if (key === 'ArrowRight') return 'keyArrowRight';
+  if (key === 'ArrowUp') return 'keyArrowUp';
+  if (key === 'ArrowDown') return 'keyArrowDown';
+  return 'key' + key.charAt(0).toUpperCase() + key.slice(1);
+}
+
+document.querySelectorAll('.key-btn[data-key]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    sendAction(btn.dataset.key);
+  });
+});
+
+function sendAction(key) {
+  if (!VALID_KEYS.has(key)) return;
+  const elId = getKeyElId(key);
+  const keyEl = document.getElementById(elId);
+  if (keyEl) {
+    keyEl.classList.add('active');
+    setTimeout(() => keyEl.classList.remove('active'), 150);
+  }
+  if (!ws || !sessionActive || generating) return;
+  ws.send(JSON.stringify({ type: 'action', key, batch_size: 8 }));
+  addActionChip(key);
+}
+
+document.addEventListener('keydown', (e) => {
+  const key = e.key;
+  if (key === ' ' && sessionActive && !generating) {
+    e.preventDefault();
+    ws.send(JSON.stringify({ type: 'generate' }));
+    generating = true;
+    setStatus('Generating...', 'generating');
+    return;
+  }
+  const normalized = VALID_KEYS.has(key) ? key : key.toLowerCase();
+  if (!VALID_KEYS.has(normalized)) return;
+  e.preventDefault();
+  sendAction(normalized);
+});
+
+document.getElementById('startBtn').addEventListener('click', () => {
+  if (ws && ws.readyState === WebSocket.OPEN) ws.close();
+  ws = new WebSocket(ws_url);
+  ws.onopen = () => {
+    const prompt = document.getElementById('promptSelect').value;
+    ws.send(JSON.stringify({ type: 'init', prompt }));
+    setStatus('Loading model & scene...', 'generating');
+    addLog(`Initializing: ${prompt}`);
+    startTime = Date.now();
+  };
+  ws.onmessage = (evt) => handleMessage(JSON.parse(evt.data));
+  ws.onclose = () => { setStatus('Disconnected', ''); sessionActive = false; generating = false; };
+  ws.onerror = () => { addLog('WebSocket error'); setStatus('Connection error', ''); };
+});
+
+document.getElementById('generateBtn').addEventListener('click', () => {
+  if (ws && sessionActive && !generating) {
+    ws.send(JSON.stringify({ type: 'generate' }));
+    generating = true;
+    setStatus('Generating...', 'generating');
+  }
+});
+
+document.getElementById('resetBtn').addEventListener('click', () => {
+  if (ws) ws.close();
+  blFrameIdx = 0; mfFrameIdx = 0; batchCount = 0; startTime = null;
+  blCanvas.src = ''; mfCanvas.src = '';
+  blCounter.textContent = 'Frame: 0'; mfCounter.textContent = 'Frame: 0';
+  clearActionQueue();
+  setStatus('Reset. Press Start to begin.', '');
+  addLog('Session reset');
+  ['mfNodes','mfEdges','mfLocations','mfObjects','mfEntities'].forEach(id =>
+    document.getElementById(id).textContent = '0');
+  document.getElementById('mfScene').textContent = '-';
+  updateStats();
+});
+
+function handleMessage(data) {
+  switch (data.type) {
+    case 'status': {
+      const isGen = data.message.includes('Generating') || data.message.includes('Loading');
+      setStatus(data.message, isGen ? 'generating' : 'ready');
+      if (data.message.includes('Ready')) generating = false;
+      break;
+    }
+    case 'init_done':
+      sessionActive = true; generating = false;
+      blCanvas.src = 'data:image/jpeg;base64,' + data.prompt_image;
+      mfCanvas.src = 'data:image/jpeg;base64,' + data.prompt_image;
+      setStatus('Ready - use controls to explore', 'ready');
+      addLog(`Scene loaded: ${data.prompt_name}`);
+      break;
+    case 'frame': {
+      const imgSrc = 'data:image/jpeg;base64,' + data.image;
+      if (data.side === 'baseline') {
+        blCanvas.src = imgSrc; blFrameIdx = data.idx + 1;
+        blCounter.textContent = `Frame: ${blFrameIdx}`;
+      } else {
+        mfCanvas.src = imgSrc; mfFrameIdx = data.idx + 1;
+        mfCounter.textContent = `Frame: ${mfFrameIdx}`;
+      }
+      updateStats();
+      break;
+    }
+    case 'action_queued':
+      queueCount.textContent = data.queue_size;
+      if (data.queue_size >= 8) {
+        clearActionQueue(); generating = true;
+        setStatus('Generating...', 'generating');
+        batchCount++;
+        addLog(`Batch ${batchCount}: generating 8 frames...`);
+      }
+      break;
+    case 'memory_update': {
+      const s = data.stats;
+      document.getElementById('mfNodes').textContent = s.nodes;
+      document.getElementById('mfEdges').textContent = s.edges;
+      document.getElementById('mfLocations').textContent = s.locations;
+      document.getElementById('mfObjects').textContent = s.objects;
+      document.getElementById('mfEntities').textContent = s.entities;
+      document.getElementById('mfScene').textContent = s.current_scene || '-';
+      addLog(`Memory: ${s.nodes} nodes, ${s.edges} edges`);
+      break;
+    }
+    case 'error':
+      setStatus('Error: ' + data.message, '');
+      generating = false;
+      addLog('ERROR: ' + data.message);
+      break;
+  }
+}
+
+setInterval(updateStats, 1000);
+</script>
+</body>
+</html>

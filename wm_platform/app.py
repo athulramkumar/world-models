@@ -9,8 +9,10 @@ from pathlib import Path
 
 import gradio as gr
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -26,6 +28,7 @@ from wm_platform.frontend.dashboard import build_dashboard_tab
 from wm_platform.frontend.model_explorer import build_model_explorer_tab
 from wm_platform.frontend.memflow_panel import build_memflow_tab
 from wm_platform.frontend.results_viewer import build_results_viewer_tab
+from wm_platform.interactive import interactive_ws_handler
 
 # ------------------------------------------------------------------ #
 #  FastAPI app
@@ -38,6 +41,20 @@ api.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+STATIC_DIR = Path(__file__).resolve().parent / "static"
+api.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+
+@api.get("/interactive")
+def interactive_page():
+    html_path = STATIC_DIR / "interactive.html"
+    return HTMLResponse(html_path.read_text())
+
+
+@api.websocket("/ws/interactive")
+async def ws_interactive(websocket: WebSocket):
+    await interactive_ws_handler(websocket)
 
 
 @api.get("/api/health")

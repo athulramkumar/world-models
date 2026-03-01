@@ -21,6 +21,7 @@
   repos/                     # Cloned model repositories
   checkpoints/               # Downloaded model weights
   wm_platform/               # Main application code
+  docs/                      # Documentation (codebase.md, setup.md, PERMANENCE_RESULTS.md)
   test_results/              # Generated test outputs (videos, metadata, frames)
 ```
 
@@ -106,6 +107,8 @@ python3 -m wm_platform.app --host 0.0.0.0 --port 7860
 
 Open `http://localhost:7860` in a browser. The Gradio UI has 4 tabs: Dashboard, Model Explorer, MemFlow, Results.
 
+The **Interactive Oasis Explorer** is at `http://localhost:7860/interactive` — a standalone page for real-time WASD exploration with side-by-side MemFlow comparison.
+
 ### API Endpoints
 
 - `GET /api/health` -- health check
@@ -113,6 +116,8 @@ Open `http://localhost:7860` in a browser. The Gradio UI has 4 tabs: Dashboard, 
 - `GET /api/profiles/{name}` -- get profile details
 - `GET /api/envs` -- check venv readiness
 - `GET /api/gpu` -- live GPU stats (name, VRAM, utilization, temp)
+- `GET /interactive` -- Interactive Oasis Explorer (HTML page)
+- `WS /ws/interactive` -- WebSocket for real-time frame streaming
 
 ## Step 5: Run Tests
 

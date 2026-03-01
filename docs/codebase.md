@@ -6,6 +6,7 @@
 wm_platform/
 ├── app.py                 # FastAPI + Gradio unified app (entry point)
 ├── config.py              # Hardware profiles, env registry, path constants
+├── interactive.py         # WebSocket handler for interactive Oasis demo
 ├── engines/
 │   ├── base.py            # BaseWorldEngine ABC, Frame, EngineState, EngineStatus
 │   ├── worker_protocol.py # JSON-over-stdin/stdout IPC for subprocess workers
@@ -27,12 +28,22 @@ wm_platform/
 │   ├── model_explorer.py  # Per-model interactive UIs (MineWorld, Oasis, World Engine)
 │   ├── memflow_panel.py   # Memory visualization, interactive persistence tests
 │   └── results_viewer.py  # Side-by-side MemFlow comparison viewer + legacy run browser
+├── static/
+│   └── interactive.html   # Browser UI for interactive Oasis demo
 └── tests/
     ├── test_engines.py          # Unit tests for engine adapters
     ├── test_memflow_kitchen.py  # Object persistence tests (diamond in chest)
     ├── test_memflow_characters.py  # Character persistence tests (Alice & Bob)
     ├── test_full_run.py         # Full integration: engine gen + MemFlow comparison
-    └── generate_comparison_videos.py  # Produces long side-by-side comparison videos
+    ├── generate_comparison_videos.py  # Produces long side-by-side comparison videos
+    ├── build_clear_outputs.py   # Re-encodes videos to 720p 30fps + montages + manifest
+    ├── test_permanence.py       # Multi-layer permanence experiments
+    ├── permanence_probe.py      # GPT-4o targeted probes on video frames
+    └── frame_judge.py           # GPT-4o quality judge for generated frames
+docs/
+├── codebase.md            # This file
+├── setup.md               # Environment setup guide
+└── PERMANENCE_RESULTS.md  # MemFlow permanence experiment results
 ```
 
 ## Application Entry Point
@@ -41,6 +52,9 @@ wm_platform/
 
 - FastAPI provides REST API endpoints (`/api/health`, `/api/profiles`, `/api/envs`, `/api/gpu`)
 - Gradio provides the interactive web UI with 4 tabs: Dashboard, Model Explorer, MemFlow, Results
+- The Interactive Oasis Explorer is served at `/interactive` (standalone HTML page)
+- WebSocket endpoint at `/ws/interactive` for real-time frame streaming
+- Static files served from `/static/`
 - Run via: `python3 -m uvicorn wm_platform.app:app --host 0.0.0.0 --port 7860`
 
 ## Engine Architecture
@@ -112,9 +126,34 @@ engine.generate_video(
 - The worker loads from `.safetensors` checkpoint files
 - `generate_frame()` raises `NotImplementedError` — use `generate_video()` instead
 
-**Oasis action keys** (24 channels): `inventory, ESC, hotbar.1-9, forward, back, left, right, cameraX, cameraY, jump, sneak, sprint, swapHands, attack, use, pickItem, drop`
+**Oasis action keys** (25 channels, indices 0-24): `inventory, ESC, hotbar.1-9, forward, back, left, right, cameraX, cameraY, jump, sneak, sprint, swapHands, attack, use, pickItem, drop`
+
+| Index | Action | Type | Range |
+|:------|:-------|:-----|:------|
+| 11 | forward | binary | 0 or 1 |
+| 12 | back | binary | 0 or 1 |
+| 13 | left | binary | 0 or 1 |
+| 14 | right | binary | 0 or 1 |
+| 15 | cameraX | continuous | [-1, 1] (negative=left, positive=right) |
+| 16 | cameraY | continuous | [-1, 1] (negative=up, positive=down) |
+| 17 | jump | binary | 0 or 1 |
+| 18 | sneak | binary | 0 or 1 |
+| 19 | sprint | binary | 0 or 1 |
+| 21 | attack | binary | 0 or 1 |
+| 22 | use/place | binary | 0 or 1 |
+
+Camera values are derived from mouse deltas: `(raw_value - 40) / 40` where the raw range is 0-80 with 40 as the center (no movement). A value of 0.4 gives a moderate pan/tilt.
 
 **Chunked generation for long videos**: The `generate_comparison_videos.py` script chains multiple 32-frame chunks together by saving the last frame of each chunk as the prompt image for the next chunk.
+
+**Interactive generation**: The `generate_interactive` worker command accepts raw action vectors directly (as JSON lists), bypassing the need for `.pt` action files:
+
+```python
+resp = client.send_command("generate_interactive",
+    prompt_path="/path/to/image.png",
+    actions=[[0]*25, [0,0,0,...,1,...,0], ...]  # list of 25-dim action vectors
+)
+```
 
 ### World Engine
 
@@ -391,6 +430,83 @@ Additional tabs: Object Persistence table, Character Persistence table, individu
 
 ---
 
+## Interactive Oasis Explorer
+
+A real-time browser-based demo at `/interactive` that lets you navigate Minecraft with WASD+camera+actions, streaming side-by-side frames comparing baseline vs MemFlow.
+
+### Architecture
+
+```
+Browser (interactive.html)
+  │  WebSocket (/ws/interactive)
+  ▼
+interactive.py (InteractiveSession)
+  │
+  ├── Queue WASD/camera/action keys
+  ├── Convert to 25-dim action vectors
+  │
+  ├── [Batch of 8 actions]
+  │   ├── Generate 8 frames WITHOUT MemFlow → stream to left panel
+  │   └── Generate 8 frames WITH MemFlow → stream to right panel
+  │       └── Each frame: Extractor → Memory graph ingest
+  │
+  └── Last frame of each side → prompt for next batch
+```
+
+### Controls
+
+| Input | Keys | Action Index | Type |
+|:------|:-----|:-------------|:-----|
+| Move forward | W | 11 | binary |
+| Move back | S | 12 | binary |
+| Move left | A | 13 | binary |
+| Move right | D | 14 | binary |
+| Look left | Arrow Left / Q | 15 | continuous (-0.4) |
+| Look right | Arrow Right / E | 15 | continuous (+0.4) |
+| Look up | Arrow Up | 16 | continuous (-0.4) |
+| Look down | Arrow Down | 16 | continuous (+0.4) |
+| Jump | J | 17 | binary |
+| Sneak | Shift | 18 | binary |
+| Sprint | Ctrl | 19 | binary |
+| Attack | F | 21 | binary |
+| Use/Place | R | 22 | binary |
+| Force generate | Space | — | triggers batch with whatever is queued |
+
+### Available Scenes (9 starting points)
+
+Each of the 3 base sample videos (1200 frames each) offers 3 starting positions extracted at different frame offsets:
+
+| Scene Group | Start (frame 0) | Mid (frame 400) | Late (frame 800) |
+|:------------|:-----------------|:-----------------|:------------------|
+| Default (Stone Tunnel) | `default` | `default_mid` | `default_late` |
+| Treechop (Forest) | `treechop` | `treechop_mid` | `treechop_late` |
+| Snippy (Birch/Grass) | `snippy` | `snippy_mid` | `snippy_late` |
+
+### WebSocket Protocol
+
+**Client → Server:**
+- `{"type": "init", "prompt": "treechop_mid"}` — start session with a scene
+- `{"type": "action", "key": "w", "batch_size": 8}` — queue a single action; auto-generates when batch fills
+- `{"type": "generate"}` — force generate with whatever actions are queued
+
+**Server → Client:**
+- `{"type": "init_done", "prompt_name": "...", "prompt_image": "<base64>"}` — session ready
+- `{"type": "frame", "side": "baseline"|"memflow", "idx": N, "image": "<base64>"}` — streamed frame
+- `{"type": "action_queued", "key": "w", "queue_size": 3}` — action acknowledged
+- `{"type": "memory_update", "stats": {...}, "prompt_text": "...", "total_frames": N}` — MemFlow graph stats
+- `{"type": "status", "message": "..."}` — status updates (loading, generating, ready)
+- `{"type": "error", "message": "..."}` — error messages
+
+### Key Implementation Details
+
+- **Async execution**: Model inference runs in `loop.run_in_executor()` to avoid blocking the WebSocket event loop
+- **Separate prompt chains**: Baseline and MemFlow each maintain independent prompt paths (last frame → next prompt), so their visual paths diverge over time
+- **MemFlow processing**: Each MemFlow frame is run through `StateExtractor.classify_scene()` and `StructuredMemory.ingest_scene()`, building the memory graph as the user explores
+- **Temporary files**: Prompt PNGs are saved to a temp directory (`/tmp/oasis_interactive_*/`) per session
+- **Generation speed**: ~10-15s per batch of 8 frames on A100 (generates baseline, then MemFlow sequentially)
+
+---
+
 ## Test Infrastructure
 
 ### Test Results Directory
@@ -410,7 +526,14 @@ test_results/
 ├── we_A_cozy_Minecraft_..../    # Individual World Engine run
 ├── memflow_object_comparison/   # Quantitative object persistence data
 ├── memflow_character_comparison/# Quantitative character persistence data
-└── memflow_summary_YYYYMMDD/    # Summary report with comparison tables
+├── memflow_summary_YYYYMMDD/    # Summary report with comparison tables
+├── permanence_probes_YYYYMMDD/  # GPT-4o permanence probe results
+│   └── probe_<name>_<dur>/      # Per-probe output (frames, catalog, analysis)
+└── final_outputs/               # Re-encoded HD outputs
+    ├── *_720p_30fps.mp4         # Upscaled 1280x720 @ 30fps videos
+    ├── *_montage.png            # Frame progression montages
+    ├── results_manifest.json    # Consolidated results with paths + GPT-4o scores
+    └── results_manifest.txt     # Human-readable summary
 ```
 
 ### Metadata JSON Structure (Comparison Runs)
